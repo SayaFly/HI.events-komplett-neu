@@ -31,7 +31,7 @@ class CategoryController extends Controller
         $data = $request->all();
         $data['slug'] = Str::slug($request->name);
         $data['is_active'] = $data['is_active'] ?? true;
-        $data['sort_order'] = $data['sort_order'] ?? Category::max('sort_order') + 1;
+        $data['sort_order'] = $data['sort_order'] ?? (Category::max('sort_order') ?? 0) + 1;
 
         $category = Category::create($data);
         return response()->json($category, 201);

@@ -53,7 +53,7 @@ class OrderController extends Controller
             $itemsData = [];
 
             foreach ($request->items as $item) {
-                $ticket = Ticket::findOrFail($item['ticket_id']);
+                $ticket = Ticket::lockForUpdate()->findOrFail($item['ticket_id']);
                 $available = $ticket->quantity - $ticket->quantity_sold;
                 if ($available < $item['quantity']) {
                     return response()->json([
@@ -75,7 +75,7 @@ class OrderController extends Controller
             $order = Order::create([
                 'user_id' => auth()->id(),
                 'event_id' => $request->event_id,
-                'order_number' => 'EV-' . strtoupper(Str::random(8)),
+                'order_number' => 'EV-' . strtoupper(substr(str_replace('-', '', (string) \Illuminate\Support\Str::uuid()), 0, 12)),
                 'status' => 'pending',
                 'total_amount' => $totalAmount,
                 'first_name' => $request->first_name,

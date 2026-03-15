@@ -45,7 +45,7 @@ class EventController extends Controller
         }
 
         $data = $request->all();
-        $data['slug'] = Str::slug($request->title) . '-' . Str::random(6);
+        $data['slug'] = $this->generateSlug($request->title);
         $data['organizer_id'] = auth()->id();
         $data['status'] = $data['status'] ?? 'draft';
 
@@ -73,7 +73,7 @@ class EventController extends Controller
 
         $data = $request->all();
         if (isset($data['title'])) {
-            $data['slug'] = Str::slug($data['title']) . '-' . Str::random(6);
+            $data['slug'] = $this->generateSlug($data['title']);
         }
 
         $event->update($data);
@@ -99,5 +99,10 @@ class EventController extends Controller
         $event = Event::findOrFail($id);
         $event->update(['status' => 'cancelled']);
         return response()->json($event);
+    }
+
+    private function generateSlug(string $title): string
+    {
+        return Str::slug($title) . '-' . Str::random(6);
     }
 }
