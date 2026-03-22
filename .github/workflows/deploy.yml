@@ -4,18 +4,18 @@
 #
 # Required GitHub Secrets (Settings → Secrets and variables → Actions):
 #
-#   VITE_API_URL          Frontend API URL  (e.g. https://api.event-veranstaltungen.de/api)
+#   VITE_API_URL          Frontend API URL  (e.g. https://api.dev-veranstaltungen.de/api)
 #   APP_KEY               Laravel APP_KEY   (base64:…)  — generate once with `php artisan key:generate --show`
 #   JWT_SECRET            JWT signing secret             — generate once with `php artisan jwt:secret --show`
-#   APP_URL               Backend URL       (e.g. https://api.event-veranstaltungen.de)
+#   APP_URL               Backend URL       (e.g. https://api.dev-veranstaltungen.de)
 #   DB_HOST               DB host           (default: 127.0.0.1)
 #   DB_PORT               DB port           (default: 3306)
 #   DB_DATABASE           DB name           (e.g. event_veranstaltungen)
 #   DB_USERNAME           DB user
 #   DB_PASSWORD           DB password
 #   MAIL_PASSWORD         SMTP password
-#   DEPLOY_BACKEND_PATH   Absolute path on the server  (e.g. C:\inetpub\api.event-veranstaltungen.de)
-#   DEPLOY_FRONTEND_PATH  Absolute path on the server  (e.g. C:\inetpub\www.event-veranstaltungen.de)
+#   DEPLOY_BACKEND_PATH   Absolute path on the server  (e.g. C:\inetpub\api.dev-veranstaltungen.de)
+#   DEPLOY_FRONTEND_PATH  Absolute path on the server  (e.g. C:\inetpub\dev-veranstaltungen.de)
 #   IIS_BACKEND_POOL      IIS app-pool name for the API  (e.g. event-api)
 #   IIS_FRONTEND_POOL     IIS app-pool name for the SPA  (e.g. event-frontend)
 #   IIS_APP_POOL_USER     App-pool identity used for file permissions

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Initial IIS configuration for event-veranstaltungen.de on Windows Server 2022.
+    Initial IIS configuration for dev-veranstaltungen.de on Windows Server 2022.
 
 .DESCRIPTION
     - Enables the required IIS Windows features
@@ -19,10 +19,10 @@
     Can also be run manually in an elevated PowerShell session:
 
         .\setup-iis.ps1 `
-            -BackendPath   "C:\inetpub\api.event-veranstaltungen.de" `
-            -FrontendPath  "C:\inetpub\www.event-veranstaltungen.de" `
-            -BackendDomain "api.event-veranstaltungen.de" `
-            -FrontendDomain "www.event-veranstaltungen.de" `
+            -BackendPath   "C:\inetpub\api.dev-veranstaltungen.de" `
+            -FrontendPath  "C:\inetpub\dev-veranstaltungen.de" `
+            -BackendDomain "api.dev-veranstaltungen.de" `
+            -FrontendDomain "dev-veranstaltungen.de" `
             -PhpCgiPath    "C:\PHP\php-cgi.exe" `
             -BackendPool   "event-api" `
             -FrontendPool  "event-frontend" `

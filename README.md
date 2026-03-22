@@ -1,6 +1,6 @@
-# event-veranstaltungen.de
+# dev-veranstaltungen.de
 
-Vollständiges Event-Management-System für **event-veranstaltungen.de**
+Vollständiges Event-Management-System für **dev-veranstaltungen.de**
 
 **Stack:**
 - Backend: **PHP 8.2+ / Laravel 11** (REST API)
@@ -52,7 +52,7 @@ SOURCE database/schema.sql;
 ```
 
 Standard-Admin-Login nach Import:
-- **E-Mail:** `admin@event-veranstaltungen.de`
+- **E-Mail:** `admin@dev-veranstaltungen.de`
 - **Passwort:** `password` (bitte sofort ändern!)
 
 ### 2. Backend (Laravel 11)
@@ -153,9 +153,9 @@ npm run build
 
 ### Websites einrichten
 
-**API:** `api.event-veranstaltungen.de` → Physischer Pfad: `backend/public/`
+**API:** `api.dev-veranstaltungen.de` → Physischer Pfad: `backend/public/`
 
-**Frontend:** `www.event-veranstaltungen.de` → Physischer Pfad: `frontend/dist/`
+**Frontend:** `dev-veranstaltungen.de` → Physischer Pfad: `frontend/dist/`
 
 ### Verzeichnisberechtigungen
 
@@ -222,7 +222,7 @@ Nach dem Import von `database/schema.sql`:
 
 | E-Mail | Passwort | Rolle |
 |---|---|---|
-| admin@event-veranstaltungen.de | password | Admin |
+| admin@dev-veranstaltungen.de | password | Admin |
 
 **Passwort nach dem ersten Login ändern!**
 

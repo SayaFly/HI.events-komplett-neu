@@ -14,9 +14,9 @@
 #   PHP_CGI_PATH          Full path to php-cgi.exe
 #                         (e.g. C:\PHP\php-cgi.exe)
 #   BACKEND_DOMAIN        Hostname for the API site
-#                         (e.g. api.event-veranstaltungen.de)
+#                         (e.g. api.dev-veranstaltungen.de)
 #   FRONTEND_DOMAIN       Hostname for the SPA site
-#                         (e.g. www.event-veranstaltungen.de)
+#                         (e.g. dev-veranstaltungen.de)
 #
 # The self-hosted runner MUST run under an account with local
 # Administrator privileges so that it can install Windows features

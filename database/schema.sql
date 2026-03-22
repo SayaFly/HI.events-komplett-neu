@@ -1,5 +1,5 @@
 -- ============================================================
--- event-veranstaltungen.de – MariaDB Schema
+-- dev-veranstaltungen.de – MariaDB Schema
 -- Kompatibel mit MariaDB 10.6+
 -- ============================================================
 
@@ -510,23 +510,23 @@ INSERT IGNORE INTO `event_categories` (`name`, `slug`, `icon`, `color`, `sort_or
 ('Sonstiges',       'sonstiges',      'IconCategory',     '#64748b', 10);
 
 INSERT IGNORE INTO `settings` (`key`, `value`, `group`) VALUES
-('site_name',            'event-veranstaltungen.de',         'general'),
-('site_url',             'https://www.event-veranstaltungen.de', 'general'),
+('site_name',            'dev-veranstaltungen.de',         'general'),
+('site_url',             'https://dev-veranstaltungen.de', 'general'),
 ('site_description',     'Ihre Plattform für Events und Veranstaltungen in Deutschland', 'general'),
 ('default_currency',     'EUR',                              'general'),
 ('default_timezone',     'Europe/Berlin',                    'general'),
 ('default_locale',       'de',                               'general'),
-('support_email',        'info@event-veranstaltungen.de',    'general'),
+('support_email',        'info@dev-veranstaltungen.de',    'general'),
 ('tickets_per_page',     '50',                               'general'),
-('mail_from_address',    'noreply@event-veranstaltungen.de', 'mail'),
-('mail_from_name',       'event-veranstaltungen.de',         'mail');
+('mail_from_address',    'noreply@dev-veranstaltungen.de', 'mail'),
+('mail_from_name',       'dev-veranstaltungen.de',         'mail');
 
 -- Admin-Benutzer (Passwort: Admin1234! – bitte nach dem Import ändern)
 INSERT IGNORE INTO `users` (`name`, `email`, `password`, `role`, `email_verified_at`, `locale`, `timezone`, `created_at`, `updated_at`) VALUES
-('Administrator', 'admin@event-veranstaltungen.de',
+('Administrator', 'admin@dev-veranstaltungen.de',
  '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
  'admin', NOW(), 'de', 'Europe/Berlin', NOW(), NOW());
--- event-veranstaltungen.de – MariaDB Datenbankschema
+-- dev-veranstaltungen.de – MariaDB Datenbankschema
 -- Erstellt für: MariaDB 10.6+
 -- Zeichensatz: utf8mb4
 -- ============================================================
@@ -755,7 +755,7 @@ CREATE TABLE IF NOT EXISTS `migrations` (
 INSERT INTO `users` (`name`, `email`, `password`, `role`, `is_active`, `created_at`, `updated_at`)
 VALUES (
   'Administrator',
-  'admin@event-veranstaltungen.de',
+  'admin@dev-veranstaltungen.de',
   '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
   'admin',
   1,

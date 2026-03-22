@@ -1,8 +1,8 @@
 {
     "name": "event-veranstaltungen/backend",
-    "description": "event-veranstaltungen.de – Laravel 11 API Backend",
+    "description": "dev-veranstaltungen.de – Laravel 11 API Backend",
     "keywords": ["laravel", "events", "tickets"],
-    "description": "Backend API for event-veranstaltungen.de",
+    "description": "Backend API for dev-veranstaltungen.de",
     "keywords": ["laravel", "events"],
     "license": "MIT",
     "require": {
