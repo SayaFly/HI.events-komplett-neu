@@ -57,6 +57,11 @@ env:
 # Least-privilege defaults for the GITHUB_TOKEN
 permissions: {}
 
+# Ensure only one deployment runs at a time; queue new runs instead of cancelling.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
 
