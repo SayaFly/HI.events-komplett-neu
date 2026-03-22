@@ -20,7 +20,7 @@ use App\Http\Controllers\Api\UploadController;
 
 /*
 |--------------------------------------------------------------------------
-| API Routes – event-veranstaltungen.de
+| API Routes – dev-veranstaltungen.de
 |--------------------------------------------------------------------------
 */
 

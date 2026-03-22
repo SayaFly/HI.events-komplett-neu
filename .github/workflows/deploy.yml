@@ -1,0 +1,301 @@
+# ============================================================
+# CI/CD – Build & Deploy to Windows Server 2022 / IIS
+# ============================================================
+#
+# Required GitHub Secrets (Settings → Secrets and variables → Actions):
+#
+#   VITE_API_URL          Frontend API URL  (e.g. https://api.dev-veranstaltungen.de/api)
+#   APP_KEY               Laravel APP_KEY   (base64:…)  — generate once with `php artisan key:generate --show`
+#   JWT_SECRET            JWT signing secret             — generate once with `php artisan jwt:secret --show`
+#   APP_URL               Backend URL       (e.g. https://api.dev-veranstaltungen.de)
+#   DB_HOST               DB host           (default: 127.0.0.1)
+#   DB_PORT               DB port           (default: 3306)
+#   DB_DATABASE           DB name           (e.g. event_veranstaltungen)
+#   DB_USERNAME           DB user
+#   DB_PASSWORD           DB password
+#   MAIL_PASSWORD         SMTP password
+#   DEPLOY_BACKEND_PATH   Absolute path on the server  (e.g. C:\inetpub\api.dev-veranstaltungen.de)
+#   DEPLOY_FRONTEND_PATH  Absolute path on the server  (e.g. C:\inetpub\dev-veranstaltungen.de)
+#   IIS_BACKEND_POOL      IIS app-pool name for the API  (e.g. event-api)
+#   IIS_FRONTEND_POOL     IIS app-pool name for the SPA  (e.g. event-frontend)
+#   IIS_APP_POOL_USER     App-pool identity used for file permissions
+#                         (e.g. "IIS AppPool\event-api")
+#
+# Prerequisites on the Windows Server 2022 runner:
+#   • GitHub Actions self-hosted runner installed and labelled "IIS"
+#     (runs as a user with local Administrator rights)
+#   • PHP 8.2+ with php-cgi.exe registered as IIS FastCGI handler
+#   • Composer available in PATH
+#   • IIS URL Rewrite Module installed
+#   • MariaDB / MySQL reachable from the server
+# ============================================================
+
+name: CI/CD – Windows Server 2022 / IIS
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: 'Run database migrations?'
+        required: true
+        default: 'true'
+        type: boolean
+      run_seed:
+        description: 'Run database seeder (only on first deploy)?'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  PHP_VERSION: '8.2'
+  NODE_VERSION: '20'
+
+# Least-privilege defaults for the GITHUB_TOKEN
+permissions: {}
+
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # JOB 1 – Build Laravel backend
+  # ══════════════════════════════════════════════════════════════════════════
+  build-backend:
+    name: Build Backend (Laravel)
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ env.PHP_VERSION }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo_mysql, openssl, mbstring, tokenizer, xml, ctype, json, bcmath, intl, fileinfo, gd
+          ini-values: post_max_size=64M, upload_max_filesize=64M
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install Composer dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-build
+          path: |
+            backend/
+            !backend/.git/
+            !backend/tests/
+            !backend/node_modules/
+          retention-days: 1
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # JOB 2 – Build React / Vite frontend
+  # ══════════════════════════════════════════════════════════════════════════
+  build-frontend:
+    name: Build Frontend (React/Vite)
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci --no-audit
+
+      - name: Write frontend .env
+        shell: pwsh
+        run: |
+          "VITE_API_URL=${{ secrets.VITE_API_URL }}" | Set-Content .env
+          Write-Host "Frontend .env written."
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Copy IIS web.config into dist
+        shell: pwsh
+        run: Copy-Item web.config dist\web.config -Force
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/dist/
+          retention-days: 1
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # JOB 3 – Deploy to IIS on Windows Server 2022
+  #          Runs on the self-hosted runner installed on the target server.
+  # ══════════════════════════════════════════════════════════════════════════
+  deploy:
+    name: Deploy to IIS (Windows Server 2022)
+    needs: [build-backend, build-frontend]
+    runs-on: [self-hosted, Windows, IIS]
+    environment: production
+    permissions: {}
+
+    steps:
+      # ── 3.1  Download artifacts ──────────────────────────────────────────
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: ${{ secrets.DEPLOY_BACKEND_PATH }}
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: ${{ secrets.DEPLOY_FRONTEND_PATH }}
+
+      # ── 3.2  Write production .env ───────────────────────────────────────
+      - name: Configure backend .env
+        shell: pwsh
+        run: |
+          $envFile = "${{ secrets.DEPLOY_BACKEND_PATH }}\.env"
+
+          # Start from the example if .env does not exist yet
+          if (-not (Test-Path $envFile)) {
+              Copy-Item "${{ secrets.DEPLOY_BACKEND_PATH }}\.env.example" $envFile -Force
+          }
+
+          $c = Get-Content $envFile -Raw
+
+          # Core settings
+          $c = $c -replace '(?m)^APP_KEY=.*',       'APP_KEY=${{ secrets.APP_KEY }}'
+          $c = $c -replace '(?m)^APP_URL=.*',       'APP_URL=${{ secrets.APP_URL }}'
+          $c = $c -replace '(?m)^APP_ENV=.*',       'APP_ENV=production'
+          $c = $c -replace '(?m)^APP_DEBUG=.*',     'APP_DEBUG=false'
+
+          # Database
+          $c = $c -replace '(?m)^DB_CONNECTION=.*', 'DB_CONNECTION=mariadb'
+          $c = $c -replace '(?m)^DB_HOST=.*',       'DB_HOST=${{ secrets.DB_HOST }}'
+          $c = $c -replace '(?m)^DB_PORT=.*',       'DB_PORT=${{ secrets.DB_PORT }}'
+          $c = $c -replace '(?m)^DB_DATABASE=.*',   'DB_DATABASE=${{ secrets.DB_DATABASE }}'
+          $c = $c -replace '(?m)^DB_USERNAME=.*',   'DB_USERNAME=${{ secrets.DB_USERNAME }}'
+          $c = $c -replace '(?m)^DB_PASSWORD=.*',   'DB_PASSWORD=${{ secrets.DB_PASSWORD }}'
+
+          # Mail
+          $c = $c -replace '(?m)^MAIL_PASSWORD=.*', 'MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}'
+
+          # JWT (append if not present)
+          if ($c -notmatch '(?m)^JWT_SECRET=') {
+              $c += "`nJWT_SECRET=${{ secrets.JWT_SECRET }}`n"
+          } else {
+              $c = $c -replace '(?m)^JWT_SECRET=.*', 'JWT_SECRET=${{ secrets.JWT_SECRET }}'
+          }
+
+          Set-Content $envFile $c -NoNewline
+          Write-Host "Backend .env configured."
+
+      # ── 3.3  Database migrations ─────────────────────────────────────────
+      - name: Run database migrations
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_migrations == 'true' }}
+        shell: pwsh
+        run: |
+          Set-Location "${{ secrets.DEPLOY_BACKEND_PATH }}"
+          php artisan migrate --force --ansi
+          Write-Host "Migrations completed."
+
+      - name: Run database seeder
+        if: ${{ github.event.inputs.run_seed == 'true' }}
+        shell: pwsh
+        run: |
+          Set-Location "${{ secrets.DEPLOY_BACKEND_PATH }}"
+          php artisan db:seed --force --ansi
+          Write-Host "Seeder completed."
+
+      # ── 3.4  File-system permissions ─────────────────────────────────────
+      - name: Set IIS permissions on storage & bootstrap/cache
+        shell: pwsh
+        run: |
+          $appPoolUser = "${{ secrets.IIS_APP_POOL_USER }}"
+          $paths = @(
+              "${{ secrets.DEPLOY_BACKEND_PATH }}\storage",
+              "${{ secrets.DEPLOY_BACKEND_PATH }}\bootstrap\cache"
+          )
+          foreach ($p in $paths) {
+              if (-not (Test-Path $p)) {
+                  New-Item -ItemType Directory -Path $p -Force | Out-Null
+              }
+              $acl  = Get-Acl $p
+              $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+                  $appPoolUser,
+                  "Modify",
+                  "ContainerInherit,ObjectInherit",
+                  "None",
+                  "Allow"
+              )
+              $acl.SetAccessRule($rule)
+              Set-Acl $p $acl
+              Write-Host "Permissions set on: $p"
+          }
+
+      # ── 3.5  Laravel optimisation ────────────────────────────────────────
+      - name: Optimise Laravel (config / route / view cache)
+        shell: pwsh
+        run: |
+          Set-Location "${{ secrets.DEPLOY_BACKEND_PATH }}"
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+          Write-Host "Laravel cache optimised."
+
+      # ── 3.6  Restart IIS application pools ───────────────────────────────
+      - name: Restart IIS application pools
+        shell: pwsh
+        run: |
+          Import-Module WebAdministration -ErrorAction Stop
+          $pools = @(
+              "${{ secrets.IIS_BACKEND_POOL }}",
+              "${{ secrets.IIS_FRONTEND_POOL }}"
+          )
+          foreach ($pool in $pools) {
+              if (Test-Path "IIS:\AppPools\$pool") {
+                  Restart-WebAppPool -Name $pool
+                  Write-Host "Restarted app pool: $pool"
+              } else {
+                  Write-Warning "App pool not found: $pool"
+              }
+          }
+
+      # ── 3.7  Smoke-test ──────────────────────────────────────────────────
+      - name: Smoke-test backend health endpoint
+        shell: pwsh
+        run: |
+          $url = "${{ secrets.APP_URL }}/api/v1/health"
+          try {
+              $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 15
+              Write-Host "Health check OK – HTTP $($r.StatusCode)"
+          } catch {
+              Write-Warning "Health check failed (endpoint may not exist yet): $_"
+          }

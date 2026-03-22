@@ -1,0 +1,70 @@
+# ============================================================
+# Initial IIS Setup – Windows Server 2022
+# ============================================================
+#
+# Run this workflow ONCE (manually) on the target server BEFORE
+# the first deploy.  It:
+#   1. Enables the required Windows / IIS features
+#   2. Registers PHP as an IIS FastCGI handler
+#   3. Creates the two IIS application pools
+#   4. Creates the two IIS websites (API + SPA)
+#   5. Creates the deployment directories
+#
+# Required GitHub Secrets (same as deploy.yml, plus):
+#   PHP_CGI_PATH          Full path to php-cgi.exe
+#                         (e.g. C:\PHP\php-cgi.exe)
+#   BACKEND_DOMAIN        Hostname for the API site
+#                         (e.g. api.dev-veranstaltungen.de)
+#   FRONTEND_DOMAIN       Hostname for the SPA site
+#                         (e.g. dev-veranstaltungen.de)
+#
+# The self-hosted runner MUST run under an account with local
+# Administrator privileges so that it can install Windows features
+# and manage IIS.
+# ============================================================
+
+name: Setup IIS – Windows Server 2022
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: >
+          Type "yes" to confirm initial IIS setup on the production server.
+          This action installs Windows features and creates IIS sites.
+        required: true
+        default: 'no'
+
+jobs:
+  setup-iis:
+    name: Initial IIS Setup
+    if: ${{ github.event.inputs.confirm == 'yes' }}
+    runs-on: [self-hosted, Windows, IIS]
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run IIS setup script
+        shell: pwsh
+        env:
+          BACKEND_PATH:   ${{ secrets.DEPLOY_BACKEND_PATH }}
+          FRONTEND_PATH:  ${{ secrets.DEPLOY_FRONTEND_PATH }}
+          BACKEND_DOMAIN: ${{ secrets.BACKEND_DOMAIN }}
+          FRONTEND_DOMAIN: ${{ secrets.FRONTEND_DOMAIN }}
+          PHP_CGI_PATH:   ${{ secrets.PHP_CGI_PATH }}
+          BACKEND_POOL:   ${{ secrets.IIS_BACKEND_POOL }}
+          FRONTEND_POOL:  ${{ secrets.IIS_FRONTEND_POOL }}
+          APP_POOL_USER:  ${{ secrets.IIS_APP_POOL_USER }}
+        run: |
+          .\.github\scripts\setup-iis.ps1 `
+            -BackendPath    "$env:BACKEND_PATH"  `
+            -FrontendPath   "$env:FRONTEND_PATH" `
+            -BackendDomain  "$env:BACKEND_DOMAIN"  `
+            -FrontendDomain "$env:FRONTEND_DOMAIN" `
+            -PhpCgiPath     "$env:PHP_CGI_PATH"   `
+            -BackendPool    "$env:BACKEND_POOL"   `
+            -FrontendPool   "$env:FRONTEND_POOL"  `
+            -AppPoolUser    "$env:APP_POOL_USER"

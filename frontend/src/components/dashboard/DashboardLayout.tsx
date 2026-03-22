@@ -90,7 +90,7 @@ export default function DashboardLayout() {
               to="/"
               style={{ textDecoration: 'none' }}
             >
-              🎫 event-veranstaltungen.de
+              🎫 dev-veranstaltungen.de
             </Text>
           </Group>
 
