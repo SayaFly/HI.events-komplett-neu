@@ -21,6 +21,16 @@
 #   IIS_APP_POOL_USER     App-pool identity used for file permissions
 #                         (e.g. "IIS AppPool\event-api")
 #
+# Pipeline overview:
+#   build  – Runs on a GitHub-hosted windows-latest runner.
+#            Installs Composer & npm dependencies, compiles the Vite frontend,
+#            and uploads two artifacts: "backend-build" and "frontend-build".
+#
+#   deploy – Runs on the self-hosted [Windows, IIS] runner on the target server.
+#            Downloads the artifacts, robocopy-deploys to IIS paths, writes the
+#            production .env, runs migrations, sets permissions, warms caches,
+#            restarts app-pools, and smoke-tests the health endpoint.
+#
 # Prerequisites on the Windows Server 2022 runner:
 #   • GitHub Actions self-hosted runner installed and labelled "IIS"
 #     (runs as a user with local Administrator rights)
@@ -61,24 +71,25 @@ concurrency:
 jobs:
 
   # ══════════════════════════════════════════════════════════════════════════
-  # JOB – Build & Deploy to IIS on Windows Server 2022
-  #        Runs entirely on the self-hosted runner installed on the target
-  #        server so that no separate build agents or artifact uploads are
-  #        required.
+  # JOB 1 – Build
+  #         Runs on a GitHub-hosted Windows runner so the self-hosted IIS
+  #         runner is not occupied during the potentially long build phase.
+  #         Produces two artifacts consumed by the deploy job:
+  #           • backend-build  – vendor/ directory included, ready to robocopy
+  #           • frontend-build – compiled dist/ + web.config
   # ══════════════════════════════════════════════════════════════════════════
-  deploy:
-    name: Deploy to IIS (Windows Server 2022)
-    runs-on: [self-hosted, Windows, IIS]
-    environment: production
+  build:
+    name: Build (GitHub-hosted runner)
+    runs-on: windows-latest
     permissions:
       contents: read
 
     steps:
-      # ── 1  Checkout source code on the server ────────────────────────────
+      # ── 1  Checkout ───────────────────────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── 2  Build backend (Composer) ───────────────────────────────────────
+      # ── 2  Backend – Composer ─────────────────────────────────────────────
       - name: Install Composer dependencies
         shell: pwsh
         working-directory: backend
@@ -86,7 +97,7 @@ jobs:
           composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
           Write-Host "Composer install complete."
 
-      # ── 3  Build frontend (Node / Vite) ───────────────────────────────────
+      # ── 3  Frontend – Node / Vite ─────────────────────────────────────────
       - name: Write frontend .env
         shell: pwsh
         working-directory: frontend
@@ -109,11 +120,57 @@ jobs:
         working-directory: frontend
         run: Copy-Item web.config dist\web.config -Force
 
-      # ── 4  Deploy files to IIS paths ──────────────────────────────────────
+      # ── 4  Upload artifacts ───────────────────────────────────────────────
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-build
+          path: backend/
+          retention-days: 1
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/dist/
+          retention-days: 1
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # JOB 2 – Deploy
+  #         Runs on the self-hosted IIS runner on the production server.
+  #         Downloads the build artifacts produced by the build job and
+  #         performs all IIS-specific deployment steps.
+  # ══════════════════════════════════════════════════════════════════════════
+  deploy:
+    name: Deploy to IIS (Windows Server 2022)
+    needs: build
+    runs-on: [self-hosted, Windows, IIS]
+    environment: production
+    permissions:
+      contents: read
+    env:
+      BACKEND_ARTIFACT_PATH:  ${{ runner.temp }}\backend
+      FRONTEND_ARTIFACT_PATH: ${{ runner.temp }}\frontend-dist
+
+    steps:
+      # ── 1  Download build artifacts ───────────────────────────────────────
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: ${{ env.BACKEND_ARTIFACT_PATH }}
+
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: ${{ env.FRONTEND_ARTIFACT_PATH }}
+
+      # ── 2  Deploy files to IIS paths ──────────────────────────────────────
       - name: Deploy backend files
         shell: pwsh
         run: |
-          $src = "${{ github.workspace }}\backend"
+          $src = "${{ env.BACKEND_ARTIFACT_PATH }}"
           $dst = "${{ secrets.DEPLOY_BACKEND_PATH }}"
           # robocopy exit codes 0-7 indicate success (bit flags for copied/skipped/etc.)
           robocopy $src $dst /MIR /XD ".git" "tests" /XF ".gitignore" /NFL /NDL /NJH /NJS
@@ -123,13 +180,13 @@ jobs:
       - name: Deploy frontend files
         shell: pwsh
         run: |
-          $src = "${{ github.workspace }}\frontend\dist"
+          $src = "${{ env.FRONTEND_ARTIFACT_PATH }}"
           $dst = "${{ secrets.DEPLOY_FRONTEND_PATH }}"
           robocopy $src $dst /MIR /NFL /NDL /NJH /NJS
           if ($LASTEXITCODE -gt 7) { throw "robocopy failed with exit code $LASTEXITCODE" }
           Write-Host "Frontend deployed to $dst"
 
-      # ── 5  Write production .env ──────────────────────────────────────────
+      # ── 3  Write production .env ──────────────────────────────────────────
       - name: Configure backend .env
         shell: pwsh
         run: |
@@ -169,7 +226,7 @@ jobs:
           Set-Content $envFile $c -NoNewline
           Write-Host "Backend .env configured."
 
-      # ── 6  Database migrations ───────────────────────────────────────────
+      # ── 4  Database migrations ───────────────────────────────────────────
       - name: Run database migrations
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_migrations == 'true' }}
         shell: pwsh
@@ -186,7 +243,7 @@ jobs:
           php artisan db:seed --force --ansi
           Write-Host "Seeder completed."
 
-      # ── 7  File-system permissions ────────────────────────────────────────
+      # ── 5  File-system permissions ────────────────────────────────────────
       - name: Set IIS permissions on storage & bootstrap/cache
         shell: pwsh
         run: |
@@ -212,7 +269,7 @@ jobs:
               Write-Host "Permissions set on: $p"
           }
 
-      # ── 8  Laravel optimisation ──────────────────────────────────────────
+      # ── 6  Laravel optimisation ──────────────────────────────────────────
       - name: Optimise Laravel (config / route / view cache)
         shell: pwsh
         run: |
@@ -222,7 +279,7 @@ jobs:
           php artisan view:cache
           Write-Host "Laravel cache optimised."
 
-      # ── 9  Restart IIS application pools ─────────────────────────────────
+      # ── 7  Restart IIS application pools ─────────────────────────────────
       - name: Restart IIS application pools
         shell: pwsh
         run: |
@@ -240,7 +297,7 @@ jobs:
               }
           }
 
-      # ── 10  Smoke-test ────────────────────────────────────────────────────
+      # ── 8  Smoke-test ────────────────────────────────────────────────────
       - name: Smoke-test backend health endpoint
         shell: pwsh
         run: |
@@ -251,3 +308,12 @@ jobs:
           } catch {
               Write-Warning "Health check failed (endpoint may not exist yet): $_"
           }
+
+      # ── 9  Clean up temporary artifacts on runner ─────────────────────────
+      - name: Remove downloaded artifacts from runner temp
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force "${{ env.BACKEND_ARTIFACT_PATH }}"  -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "${{ env.FRONTEND_ARTIFACT_PATH }}" -ErrorAction SilentlyContinue
+          Write-Host "Temporary artifact directories removed."

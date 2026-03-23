@@ -4,7 +4,8 @@
 
 .DESCRIPTION
     Fully automated setup that installs and configures EVERYTHING the project needs
-    from scratch on a fresh Windows Server 2022 machine:
+    from scratch on a fresh Windows Server 2022 machine (including Standard Evaluation).
+    Compatible with both Windows PowerShell 5.1 and PowerShell 7.x (pwsh).
 
     Phase 1 – Package manager
         - Installs Chocolatey (Windows package manager) if not already present.
@@ -28,6 +29,10 @@
 
     Run ONCE on the target server before the first deployment.
     The process must have local Administrator privileges.
+
+    NOTE: The GitHub Actions self-hosted runner must be installed and registered
+    (labelled "IIS") on this server BEFORE triggering any deployment workflow.
+    See: https://docs.github.com/en/actions/hosting-your-own-runners/adding-self-hosted-runners
 
 .NOTES
     Called by .github/workflows/setup-iis.yml
@@ -70,6 +75,17 @@ function Write-Skip([string]$msg) {
     Write-Host "  [--] $msg (already configured)" -ForegroundColor DarkGray
 }
 
+# Helper: import a module with Windows PowerShell compatibility shim when running
+# under PowerShell 7+ (Core edition), where modules like ServerManager and
+# WebAdministration are not natively available.
+function Import-CompatModule([string]$Name) {
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        Import-Module $Name -UseWindowsPowerShell -ErrorAction Stop
+    } else {
+        Import-Module $Name -ErrorAction Stop
+    }
+}
+
 # Helper: install a Chocolatey package only when it is not already present.
 function Install-ChocoPackage {
     param(
@@ -77,15 +93,16 @@ function Install-ChocoPackage {
         [string]$Version = '',
         [string[]]$Params = @()
     )
-    $installed = choco list --local-only --exact $Name 2>$null | Select-String "^$Name "
+    # choco list is local-only by default in Chocolatey 2.x; --exact matches the package name exactly.
+    $installed = choco list --exact $Name 2>$null | Select-String "^$Name "
     if ($installed) {
         Write-Skip "choco: $Name"
         return
     }
-    $args = @('install', $Name, '-y', '--no-progress')
-    if ($Version) { $args += "--version=$Version" }
-    if ($Params)  { $args += $Params }
-    & choco @args
+    $chocoArgs = @('install', $Name, '-y', '--no-progress')
+    if ($Version) { $chocoArgs += "--version=$Version" }
+    if ($Params)  { $chocoArgs += $Params }
+    & choco @chocoArgs
     Write-OK "Installed: $Name"
 }
 
@@ -208,6 +225,10 @@ Write-OK "Runtime dependencies ready"
 # ─────────────────────────────────────────────────────────────────────────────
 Write-Step "Phase 3 – Enabling IIS Windows features"
 
+# ServerManager provides Get-WindowsFeature / Install-WindowsFeature.
+# On PS7 (Core edition) this module needs the Windows PowerShell compatibility shim.
+Import-CompatModule 'ServerManager'
+
 $features = @(
     'Web-Server',
     'Web-Common-Http',
@@ -237,7 +258,7 @@ foreach ($f in $features) {
     }
 }
 
-Import-Module WebAdministration -ErrorAction Stop
+Import-CompatModule 'WebAdministration'
 
 # IIS URL Rewrite Module 2.1 (required for Laravel / SPA routing)
 Write-Step "Installing IIS URL Rewrite Module"
@@ -420,11 +441,15 @@ Write-Host "`n✅  IIS setup complete." -ForegroundColor Green
 Write-Host @"
 
 Next steps:
-  1. Install an SSL certificate and add HTTPS bindings for:
+  1. If not done yet, install and register the GitHub Actions self-hosted runner
+     on this server (label it 'self-hosted', 'Windows', 'IIS') so that the
+     deployment workflow can connect to it:
+       https://docs.github.com/en/actions/hosting-your-own-runners/adding-self-hosted-runners
+  2. Install an SSL certificate and add HTTPS bindings for:
        - $BackendDomain  (port 443)
        - $FrontendDomain (port 443)
-  2. Add required GitHub Secrets and run the 'CI/CD – Windows Server 2022 / IIS'
+  3. Add required GitHub Secrets and run the 'CI/CD – Windows Server 2022 / IIS'
      workflow with 'run_seed = true' for the very first deployment.
-  3. Change the default admin password after logging in for the first time.
+  4. Change the default admin password after logging in for the first time.
 "@
 
