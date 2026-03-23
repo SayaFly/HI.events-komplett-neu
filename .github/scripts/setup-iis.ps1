@@ -3,13 +3,28 @@
     Initial IIS configuration for dev-veranstaltungen.de on Windows Server 2022.
 
 .DESCRIPTION
-    - Enables the required IIS Windows features
-    - Registers PHP as a FastCGI handler in IIS
-    - Creates two IIS application pools  (API + SPA)
-    - Creates two IIS websites           (API + SPA)
-    - Creates the deployment directories
-    - Grants the app-pool identity Modify rights on
-        backend\storage\ and backend\bootstrap\cache\
+    Fully automated setup that installs and configures EVERYTHING the project needs
+    from scratch on a fresh Windows Server 2022 machine:
+
+    Phase 1 – Package manager
+        - Installs Chocolatey (Windows package manager) if not already present.
+
+    Phase 2 – Runtime dependencies
+        - Visual C++ Redistributable 2015-2022 (x64) – required by PHP
+        - PHP 8.2 (NTS, x64) with all required extensions
+        - Composer (PHP dependency manager)
+        - Node.js 20 LTS (includes npm)
+
+    Phase 3 – IIS & web platform components
+        - Enables all required IIS Windows features (Web-Server, CGI, compression …)
+        - Installs IIS URL Rewrite Module 2.1
+
+    Phase 4 – IIS site configuration
+        - Registers PHP as a FastCGI handler
+        - Creates two IIS application pools  (API + SPA)
+        - Creates two IIS websites           (API + SPA)
+        - Creates the deployment directories and Laravel writable sub-directories
+        - Grants the app-pool identity the required file-system permissions
 
     Run ONCE on the target server before the first deployment.
     The process must have local Administrator privileges.
@@ -34,7 +49,8 @@ param (
     [Parameter(Mandatory)][string] $FrontendPath,
     [Parameter(Mandatory)][string] $BackendDomain,
     [Parameter(Mandatory)][string] $FrontendDomain,
-    [Parameter(Mandatory)][string] $PhpCgiPath,
+    # Default matches Chocolatey's php package install location
+    [string] $PhpCgiPath    = 'C:\tools\php82\php-cgi.exe',
     [string] $BackendPool   = 'event-api',
     [string] $FrontendPool  = 'event-frontend',
     [string] $AppPoolUser   = "IIS AppPool\$BackendPool"
@@ -54,10 +70,143 @@ function Write-Skip([string]$msg) {
     Write-Host "  [--] $msg (already configured)" -ForegroundColor DarkGray
 }
 
+# Helper: install a Chocolatey package only when it is not already present.
+function Install-ChocoPackage {
+    param(
+        [string]$Name,
+        [string]$Version = '',
+        [string[]]$Params = @()
+    )
+    $installed = choco list --local-only --exact $Name 2>$null | Select-String "^$Name "
+    if ($installed) {
+        Write-Skip "choco: $Name"
+        return
+    }
+    $args = @('install', $Name, '-y', '--no-progress')
+    if ($Version) { $args += "--version=$Version" }
+    if ($Params)  { $args += $Params }
+    & choco @args
+    Write-OK "Installed: $Name"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. IIS Windows Features
+# PHASE 1 – Chocolatey (Windows package manager)
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Step "Installing IIS Windows features"
+Write-Step "Phase 1 – Installing Chocolatey"
+
+if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+    Set-ExecutionPolicy Bypass -Scope Process -Force
+    [System.Net.ServicePointManager]::SecurityProtocol = `
+        [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+    Invoke-Expression (
+        (New-Object System.Net.WebClient).DownloadString(
+            'https://community.chocolatey.org/install.ps1'
+        )
+    )
+    # Reload PATH so that choco is immediately available in this session
+    $env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+                [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    Write-OK "Chocolatey installed"
+} else {
+    Write-Skip "Chocolatey"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 2 – Runtime dependencies
+# ─────────────────────────────────────────────────────────────────────────────
+Write-Step "Phase 2 – Installing runtime dependencies"
+
+# Visual C++ Redistributable 2015-2022 (x64) – required by PHP NTS builds
+Install-ChocoPackage -Name 'vcredist140'
+
+# PHP 8.2 NTS (non-thread-safe) for IIS FastCGI
+Install-ChocoPackage -Name 'php' -Version '8.2.*' -Params @(
+    '--params', '"/InstallDir:C:\tools\php82 /ThreadSafe:false"'
+)
+
+# Ensure the PHP install directory is in the system PATH
+$phpDir = Split-Path $PhpCgiPath
+$machinePath = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+if ($machinePath -notlike "*$phpDir*") {
+    [System.Environment]::SetEnvironmentVariable(
+        'Path', "$machinePath;$phpDir", 'Machine'
+    )
+    $env:Path += ";$phpDir"
+    Write-OK "Added $phpDir to system PATH"
+} else {
+    Write-Skip "PHP directory already in PATH"
+}
+
+# Verify php.exe is usable and enable the extensions required by Laravel
+$phpIni = Join-Path $phpDir 'php.ini'
+if (Test-Path (Join-Path $phpDir 'php.ini-production')) {
+    if (-not (Test-Path $phpIni)) {
+        Copy-Item (Join-Path $phpDir 'php.ini-production') $phpIni
+        Write-OK "Created php.ini from php.ini-production"
+    }
+}
+if (Test-Path $phpIni) {
+    $ini = Get-Content $phpIni -Raw
+    $extensions = @(
+        'extension=pdo_mysql',
+        'extension=openssl',
+        'extension=mbstring',
+        'extension=tokenizer',
+        'extension=xml',
+        'extension=ctype',
+        'extension=json',
+        'extension=bcmath',
+        'extension=intl',
+        'extension=fileinfo',
+        'extension=gd',
+        'extension=curl',
+        'extension=zip'
+    )
+    $changed = $false
+    foreach ($ext in $extensions) {
+        # Uncomment if commented out (;extension=…) or append if missing
+        $extName = $ext -replace 'extension=', ''
+        if ($ini -match "(?m)^;$([regex]::Escape($ext))") {
+            $ini = $ini -replace "(?m)^;$([regex]::Escape($ext))", $ext
+            $changed = $true
+        } elseif ($ini -notmatch "(?m)^$([regex]::Escape($ext))") {
+            $ini += "`n$ext"
+            $changed = $true
+        }
+    }
+    # Set post/upload size limits
+    if ($ini -notmatch '(?m)^post_max_size\s*=\s*64M') {
+        $ini = $ini -replace '(?m)^post_max_size\s*=.*',       'post_max_size = 64M'
+        $changed = $true
+    }
+    if ($ini -notmatch '(?m)^upload_max_filesize\s*=\s*64M') {
+        $ini = $ini -replace '(?m)^upload_max_filesize\s*=.*', 'upload_max_filesize = 64M'
+        $changed = $true
+    }
+    if ($changed) {
+        Set-Content $phpIni $ini -NoNewline
+        Write-OK "php.ini updated with required extensions"
+    } else {
+        Write-Skip "php.ini extensions already enabled"
+    }
+}
+
+# Composer
+Install-ChocoPackage -Name 'composer'
+
+# Node.js 20 LTS (bundles npm)
+Install-ChocoPackage -Name 'nodejs-lts' -Version '20.*'
+
+# Reload PATH after installing Node / Composer so they are available below
+$env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+            [System.Environment]::GetEnvironmentVariable('Path', 'User')
+
+Write-OK "Runtime dependencies ready"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 3 – IIS Windows Features + URL Rewrite Module
+# ─────────────────────────────────────────────────────────────────────────────
+Write-Step "Phase 3 – Enabling IIS Windows features"
 
 $features = @(
     'Web-Server',
@@ -90,24 +239,41 @@ foreach ($f in $features) {
 
 Import-Module WebAdministration -ErrorAction Stop
 
+# IIS URL Rewrite Module 2.1 (required for Laravel / SPA routing)
+Write-Step "Installing IIS URL Rewrite Module"
+$rewriteKey = 'HKLM:\SOFTWARE\Microsoft\IIS Extensions\URL Rewrite'
+if (Test-Path $rewriteKey) {
+    Write-Skip "IIS URL Rewrite Module"
+} else {
+    # Download and install the MSI silently
+    $msiUrl  = 'https://download.microsoft.com/download/1/2/8/128E2E22-C1B9-44A4-BE2A-5859ED1D4592/rewrite_amd64_en-US.msi'
+    $msiPath = "$env:TEMP\rewrite_amd64.msi"
+    Invoke-WebRequest -Uri $msiUrl -OutFile $msiPath -UseBasicParsing
+    Start-Process msiexec.exe -ArgumentList "/i `"$msiPath`" /quiet /norestart" -Wait
+    Remove-Item $msiPath -Force
+    Write-OK "IIS URL Rewrite Module installed"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. PHP FastCGI handler
+# PHASE 4 – IIS site configuration
 # ─────────────────────────────────────────────────────────────────────────────
+
+# ── 4.1  PHP FastCGI handler ────────────────────────────────────────────────
 Write-Step "Registering PHP FastCGI handler"
 
 if (-not (Test-Path $PhpCgiPath)) {
-    Write-Warning "php-cgi.exe not found at '$PhpCgiPath'. Install PHP 8.2+ first, then re-run."
+    Write-Warning "php-cgi.exe not found at '$PhpCgiPath'. Verify the PHP install path and re-run."
 } else {
     $existing = Get-WebConfiguration 'system.webServer/fastCgi/application' |
         Where-Object { $_.fullPath -eq $PhpCgiPath }
 
     if (-not $existing) {
         Add-WebConfiguration 'system.webServer/fastCgi' -Value @{
-            fullPath           = $PhpCgiPath
-            maxInstances       = 4
-            idleTimeout        = 300
-            activityTimeout    = 300
-            requestTimeout     = 90
+            fullPath            = $PhpCgiPath
+            maxInstances        = 4
+            idleTimeout         = 300
+            activityTimeout     = 300
+            requestTimeout      = 90
             instanceMaxRequests = 10000
         }
         Write-OK "FastCGI application registered: $PhpCgiPath"
@@ -138,9 +304,7 @@ if (-not (Test-Path $PhpCgiPath)) {
     }
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. Deployment directories
-# ─────────────────────────────────────────────────────────────────────────────
+# ── 4.2  Deployment directories ─────────────────────────────────────────────
 Write-Step "Creating deployment directories"
 
 foreach ($dir in @($BackendPath, $FrontendPath)) {
@@ -163,9 +327,7 @@ foreach ($sub in @('storage\app\public', 'storage\framework\cache\data',
     }
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. IIS Application Pools
-# ─────────────────────────────────────────────────────────────────────────────
+# ── 4.3  IIS Application Pools ──────────────────────────────────────────────
 Write-Step "Creating IIS application pools"
 
 foreach ($pool in @($BackendPool, $FrontendPool)) {
@@ -180,9 +342,7 @@ foreach ($pool in @($BackendPool, $FrontendPool)) {
     }
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 5. IIS Websites
-# ─────────────────────────────────────────────────────────────────────────────
+# ── 4.4  IIS Websites ───────────────────────────────────────────────────────
 Write-Step "Creating IIS websites"
 
 $sites = @(
@@ -204,9 +364,7 @@ foreach ($s in $sites) {
     }
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 6. File-system permissions for the app-pool identity
-# ─────────────────────────────────────────────────────────────────────────────
+# ── 4.5  File-system permissions for the app-pool identity ──────────────────
 Write-Step "Setting file-system permissions for $AppPoolUser"
 
 $writablePaths = @(
@@ -269,3 +427,4 @@ Next steps:
      workflow with 'run_seed = true' for the very first deployment.
   3. Change the default admin password after logging in for the first time.
 "@
+

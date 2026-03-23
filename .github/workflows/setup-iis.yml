@@ -3,20 +3,29 @@
 # ============================================================
 #
 # Run this workflow ONCE (manually) on the target server BEFORE
-# the first deploy.  It:
-#   1. Enables the required Windows / IIS features
-#   2. Registers PHP as an IIS FastCGI handler
-#   3. Creates the two IIS application pools
-#   4. Creates the two IIS websites (API + SPA)
-#   5. Creates the deployment directories
+# the first deploy.  It fully automates the server setup:
+#   1. Installs Chocolatey (Windows package manager)
+#   2. Installs all runtime dependencies via Chocolatey:
+#        - Visual C++ Redistributable 2015-2022 (required by PHP)
+#        - PHP 8.2 NTS with all Laravel-required extensions
+#        - Composer
+#        - Node.js 20 LTS (includes npm)
+#   3. Enables the required IIS Windows features
+#   4. Installs the IIS URL Rewrite Module
+#   5. Registers PHP as an IIS FastCGI handler
+#   6. Creates the two IIS application pools (API + SPA)
+#   7. Creates the two IIS websites          (API + SPA)
+#   8. Creates the deployment directories
 #
 # Required GitHub Secrets (same as deploy.yml, plus):
-#   PHP_CGI_PATH          Full path to php-cgi.exe
-#                         (e.g. C:\PHP\php-cgi.exe)
 #   BACKEND_DOMAIN        Hostname for the API site
 #                         (e.g. api.dev-veranstaltungen.de)
 #   FRONTEND_DOMAIN       Hostname for the SPA site
 #                         (e.g. dev-veranstaltungen.de)
+#
+# Optional secret (only needed if PHP is installed to a non-default path):
+#   PHP_CGI_PATH          Full path to php-cgi.exe
+#                         (default: C:\tools\php82\php-cgi.exe)
 #
 # The self-hosted runner MUST run under an account with local
 # Administrator privileges so that it can install Windows features
@@ -50,21 +59,24 @@ jobs:
       - name: Run IIS setup script
         shell: pwsh
         env:
-          BACKEND_PATH:   ${{ secrets.DEPLOY_BACKEND_PATH }}
-          FRONTEND_PATH:  ${{ secrets.DEPLOY_FRONTEND_PATH }}
+          BACKEND_PATH: ${{ secrets.DEPLOY_BACKEND_PATH }}
+          FRONTEND_PATH: ${{ secrets.DEPLOY_FRONTEND_PATH }}
           BACKEND_DOMAIN: ${{ secrets.BACKEND_DOMAIN }}
           FRONTEND_DOMAIN: ${{ secrets.FRONTEND_DOMAIN }}
-          PHP_CGI_PATH:   ${{ secrets.PHP_CGI_PATH }}
-          BACKEND_POOL:   ${{ secrets.IIS_BACKEND_POOL }}
-          FRONTEND_POOL:  ${{ secrets.IIS_FRONTEND_POOL }}
-          APP_POOL_USER:  ${{ secrets.IIS_APP_POOL_USER }}
+          PHP_CGI_PATH: ${{ secrets.PHP_CGI_PATH }}
+          BACKEND_POOL: ${{ secrets.IIS_BACKEND_POOL }}
+          FRONTEND_POOL: ${{ secrets.IIS_FRONTEND_POOL }}
+          APP_POOL_USER: ${{ secrets.IIS_APP_POOL_USER }}
         run: |
-          .\.github\scripts\setup-iis.ps1 `
-            -BackendPath    "$env:BACKEND_PATH"  `
-            -FrontendPath   "$env:FRONTEND_PATH" `
-            -BackendDomain  "$env:BACKEND_DOMAIN"  `
-            -FrontendDomain "$env:FRONTEND_DOMAIN" `
-            -PhpCgiPath     "$env:PHP_CGI_PATH"   `
-            -BackendPool    "$env:BACKEND_POOL"   `
-            -FrontendPool   "$env:FRONTEND_POOL"  `
-            -AppPoolUser    "$env:APP_POOL_USER"
+          $params = @{
+              BackendPath    = $env:BACKEND_PATH
+              FrontendPath   = $env:FRONTEND_PATH
+              BackendDomain  = $env:BACKEND_DOMAIN
+              FrontendDomain = $env:FRONTEND_DOMAIN
+              BackendPool    = $env:BACKEND_POOL
+              FrontendPool   = $env:FRONTEND_POOL
+              AppPoolUser    = $env:APP_POOL_USER
+          }
+          # PHP_CGI_PATH is optional – only pass it when the secret is set
+          if ($env:PHP_CGI_PATH) { $params['PhpCgiPath'] = $env:PHP_CGI_PATH }
+          .\.github\scripts\setup-iis.ps1 @params

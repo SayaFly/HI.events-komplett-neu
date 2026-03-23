@@ -1,5 +1,5 @@
 # ============================================================
-# CI/CD – Build & Deploy to Windows Server 2022 / IIS
+# CI/CD – Deploy to Windows Server 2022 / IIS
 # ============================================================
 #
 # Required GitHub Secrets (Settings → Secrets and variables → Actions):
@@ -24,10 +24,9 @@
 # Prerequisites on the Windows Server 2022 runner:
 #   • GitHub Actions self-hosted runner installed and labelled "IIS"
 #     (runs as a user with local Administrator rights)
-#   • PHP 8.2+ with php-cgi.exe registered as IIS FastCGI handler
-#   • Composer available in PATH
-#   • IIS URL Rewrite Module installed
-#   • MariaDB / MySQL reachable from the server
+#   • All other components (PHP, Composer, Node.js, IIS, URL Rewrite …)
+#     are installed automatically by .github/scripts/setup-iis.ps1 –
+#     run the "Setup IIS" workflow ONCE before the first deploy.
 # ============================================================
 
 name: CI/CD – Windows Server 2022 / IIS
@@ -50,10 +49,6 @@ on:
         default: 'false'
         type: boolean
 
-env:
-  PHP_VERSION: '8.2'
-  NODE_VERSION: '20'
-
 # Least-privilege defaults for the GITHUB_TOKEN
 permissions: {}
 
@@ -66,123 +61,75 @@ concurrency:
 jobs:
 
   # ══════════════════════════════════════════════════════════════════════════
-  # JOB 1 – Build Laravel backend
+  # JOB – Build & Deploy to IIS on Windows Server 2022
+  #        Runs entirely on the self-hosted runner installed on the target
+  #        server so that no separate build agents or artifact uploads are
+  #        required.
   # ══════════════════════════════════════════════════════════════════════════
-  build-backend:
-    name: Build Backend (Laravel)
-    runs-on: windows-2022
+  deploy:
+    name: Deploy to IIS (Windows Server 2022)
+    runs-on: [self-hosted, Windows, IIS]
+    environment: production
     permissions:
       contents: read
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
+      # ── 1  Checkout source code on the server ────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup PHP ${{ env.PHP_VERSION }}
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ env.PHP_VERSION }}
-          extensions: pdo_mysql, openssl, mbstring, tokenizer, xml, ctype, json, bcmath, intl, fileinfo, gd
-          ini-values: post_max_size=64M, upload_max_filesize=64M
-          coverage: none
-          tools: composer:v2
-
-      - name: Cache Composer packages
-        uses: actions/cache@v4
-        with:
-          path: backend/vendor
-          key: composer-${{ hashFiles('backend/composer.lock') }}
-          restore-keys: composer-
-
+      # ── 2  Build backend (Composer) ───────────────────────────────────────
       - name: Install Composer dependencies
-        run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
+        shell: pwsh
+        working-directory: backend
+        run: |
+          composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
+          Write-Host "Composer install complete."
 
-      - name: Upload backend artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-build
-          path: |
-            backend/
-            !backend/.git/
-            !backend/tests/
-            !backend/node_modules/
-          retention-days: 1
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # JOB 2 – Build React / Vite frontend
-  # ══════════════════════════════════════════════════════════════════════════
-  build-frontend:
-    name: Build Frontend (React/Vite)
-    runs-on: windows-2022
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: frontend
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install npm dependencies
-        run: npm ci --no-audit
-
+      # ── 3  Build frontend (Node / Vite) ───────────────────────────────────
       - name: Write frontend .env
         shell: pwsh
+        working-directory: frontend
         run: |
           "VITE_API_URL=${{ secrets.VITE_API_URL }}" | Set-Content .env
           Write-Host "Frontend .env written."
 
+      - name: Install npm dependencies
+        shell: pwsh
+        working-directory: frontend
+        run: npm ci --no-audit
+
       - name: Build frontend
+        shell: pwsh
+        working-directory: frontend
         run: npm run build
 
       - name: Copy IIS web.config into dist
         shell: pwsh
+        working-directory: frontend
         run: Copy-Item web.config dist\web.config -Force
 
-      - name: Upload frontend artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build
-          path: frontend/dist/
-          retention-days: 1
+      # ── 4  Deploy files to IIS paths ──────────────────────────────────────
+      - name: Deploy backend files
+        shell: pwsh
+        run: |
+          $src = "${{ github.workspace }}\backend"
+          $dst = "${{ secrets.DEPLOY_BACKEND_PATH }}"
+          # robocopy exit codes 0-7 indicate success (bit flags for copied/skipped/etc.)
+          robocopy $src $dst /MIR /XD ".git" "tests" /XF ".gitignore" /NFL /NDL /NJH /NJS
+          if ($LASTEXITCODE -gt 7) { throw "robocopy failed with exit code $LASTEXITCODE" }
+          Write-Host "Backend deployed to $dst"
 
-  # ══════════════════════════════════════════════════════════════════════════
-  # JOB 3 – Deploy to IIS on Windows Server 2022
-  #          Runs on the self-hosted runner installed on the target server.
-  # ══════════════════════════════════════════════════════════════════════════
-  deploy:
-    name: Deploy to IIS (Windows Server 2022)
-    needs: [build-backend, build-frontend]
-    runs-on: [self-hosted, Windows, IIS]
-    environment: production
-    permissions: {}
+      - name: Deploy frontend files
+        shell: pwsh
+        run: |
+          $src = "${{ github.workspace }}\frontend\dist"
+          $dst = "${{ secrets.DEPLOY_FRONTEND_PATH }}"
+          robocopy $src $dst /MIR /NFL /NDL /NJH /NJS
+          if ($LASTEXITCODE -gt 7) { throw "robocopy failed with exit code $LASTEXITCODE" }
+          Write-Host "Frontend deployed to $dst"
 
-    steps:
-      # ── 3.1  Download artifacts ──────────────────────────────────────────
-      - name: Download backend artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: backend-build
-          path: ${{ secrets.DEPLOY_BACKEND_PATH }}
-
-      - name: Download frontend artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-build
-          path: ${{ secrets.DEPLOY_FRONTEND_PATH }}
-
-      # ── 3.2  Write production .env ───────────────────────────────────────
+      # ── 5  Write production .env ──────────────────────────────────────────
       - name: Configure backend .env
         shell: pwsh
         run: |
@@ -222,7 +169,7 @@ jobs:
           Set-Content $envFile $c -NoNewline
           Write-Host "Backend .env configured."
 
-      # ── 3.3  Database migrations ─────────────────────────────────────────
+      # ── 6  Database migrations ───────────────────────────────────────────
       - name: Run database migrations
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_migrations == 'true' }}
         shell: pwsh
@@ -239,7 +186,7 @@ jobs:
           php artisan db:seed --force --ansi
           Write-Host "Seeder completed."
 
-      # ── 3.4  File-system permissions ─────────────────────────────────────
+      # ── 7  File-system permissions ────────────────────────────────────────
       - name: Set IIS permissions on storage & bootstrap/cache
         shell: pwsh
         run: |
@@ -265,7 +212,7 @@ jobs:
               Write-Host "Permissions set on: $p"
           }
 
-      # ── 3.5  Laravel optimisation ────────────────────────────────────────
+      # ── 8  Laravel optimisation ──────────────────────────────────────────
       - name: Optimise Laravel (config / route / view cache)
         shell: pwsh
         run: |
@@ -275,7 +222,7 @@ jobs:
           php artisan view:cache
           Write-Host "Laravel cache optimised."
 
-      # ── 3.6  Restart IIS application pools ───────────────────────────────
+      # ── 9  Restart IIS application pools ─────────────────────────────────
       - name: Restart IIS application pools
         shell: pwsh
         run: |
@@ -293,7 +240,7 @@ jobs:
               }
           }
 
-      # ── 3.7  Smoke-test ──────────────────────────────────────────────────
+      # ── 10  Smoke-test ────────────────────────────────────────────────────
       - name: Smoke-test backend health endpoint
         shell: pwsh
         run: |
