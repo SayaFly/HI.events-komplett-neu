@@ -43,20 +43,18 @@ name: CI/CD – Windows Server 2022 / IIS
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [ main, master ]
   workflow_dispatch:
     inputs:
       run_migrations:
-        description: 'Run database migrations?'
+        description: Run database migrations?
         required: true
-        default: 'true'
+        default: true
         type: boolean
       run_seed:
-        description: 'Run database seeder (only on first deploy)?'
+        description: Run database seeder (only on first deploy)?
         required: false
-        default: 'false'
+        default: false
         type: boolean
 
 # Least-privilege defaults for the GITHUB_TOKEN
