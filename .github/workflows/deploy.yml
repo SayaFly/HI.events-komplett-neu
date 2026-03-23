@@ -149,8 +149,8 @@ jobs:
     permissions:
       contents: read
     env:
-      BACKEND_ARTIFACT_PATH:  ${{ runner.temp }}\backend
-      FRONTEND_ARTIFACT_PATH: ${{ runner.temp }}\frontend-dist
+       BACKEND_ARTIFACT_PATH:  ${{ env.RUNNER_TEMP }}\backend
+      FRONTEND_ARTIFACT_PATH: ${{ env.RUNNER_TEMP }}\frontend-dist
 
     steps:
       # ── 1  Download build artifacts ───────────────────────────────────────
