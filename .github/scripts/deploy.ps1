@@ -29,23 +29,19 @@
             -QuellPfad    "C:\deploy\HI.events-komplett-neu" `
             -BackendPfad  "C:\inetpub\api.dev-veranstaltungen.de" `
             -FrontendPfad "C:\inetpub\dev-veranstaltungen.de" `
-            -AppKey       "base64:..." `
             -AppUrl       "https://api.dev-veranstaltungen.de" `
             -ViteApiUrl   "https://api.dev-veranstaltungen.de/api" `
             -DbHost       "127.0.0.1" `
             -DbDatenbank  "event_veranstaltungen" `
             -DbBenutzer   "ev_user" `
             -DbPasswort   "sicheres_passwort" `
-            -JwtSecret    "jwt_geheimnis" `
             -Migrationen
 
         (Parameter -Seeder zusätzlich nur beim allerersten Deployment angeben.)
 
-    APP_KEY erzeugen (einmalig, vor dem ersten Deployment):
-        php artisan key:generate --show
-
-    JWT_SECRET erzeugen (einmalig, vor dem ersten Deployment):
-        php artisan jwt:secret --show
+    APP_KEY und JWT_SECRET werden beim ersten Deployment automatisch erzeugt und
+    dauerhaft in der .env gespeichert – keine manuelle Vorarbeit nötig.
+    Bei Folge-Deployments werden vorhandene Werte beibehalten.
 
 .NOTES
     Ersetzt den GitHub Actions Workflow deploy.yml.
@@ -69,15 +65,15 @@ param (
     [string] $AppPoolUser  = 'IIS AppPool\event-api',
 
     # ── Laravel .env ───────────────────────────────────────────────────────────
-    [Parameter(Mandatory)][string] $AppKey,
+    [string] $AppKey      = '',   # leer → wird automatisch via 'php artisan key:generate' erzeugt
     [Parameter(Mandatory)][string] $AppUrl,
     [Parameter(Mandatory)][string] $DbHost,
-    [string]              $DbPort      = '3306',
+    [string] $DbPort      = '3306',
     [Parameter(Mandatory)][string] $DbDatenbank,
     [Parameter(Mandatory)][string] $DbBenutzer,
     [Parameter(Mandatory)][string] $DbPasswort,
-    [string]              $MailPasswort = '',
-    [Parameter(Mandatory)][string] $JwtSecret,
+    [string] $MailPasswort = '',
+    [string] $JwtSecret   = '',   # leer → wird automatisch via 'php artisan jwt:secret' erzeugt
 
     # ── Frontend-Build ─────────────────────────────────────────────────────────
     [Parameter(Mandatory)][string] $ViteApiUrl,
@@ -119,6 +115,20 @@ Push-Location $BackendQuelle
 try {
     composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
     Write-OK "Composer install abgeschlossen"
+
+    # APP_KEY automatisch erzeugen, falls nicht übergeben
+    if (-not $AppKey) {
+        $AppKey = (php artisan key:generate --show --no-ansi).Trim()
+        if (-not $AppKey) { throw "APP_KEY konnte nicht automatisch erzeugt werden. Bitte manuell mit -AppKey übergeben." }
+        Write-OK "APP_KEY automatisch erzeugt"
+    }
+
+    # JWT_SECRET automatisch erzeugen, falls nicht übergeben
+    if (-not $JwtSecret) {
+        $JwtSecret = (php artisan jwt:secret --show --no-ansi).Trim()
+        if (-not $JwtSecret) { throw "JWT_SECRET konnte nicht automatisch erzeugt werden. Bitte manuell mit -JwtSecret übergeben." }
+        Write-OK "JWT_SECRET automatisch erzeugt"
+    }
 } finally {
     Pop-Location
 }
@@ -180,6 +190,15 @@ if (-not (Test-Path $EnvDatei)) {
 }
 
 $Inhalt = Get-Content $EnvDatei -Raw
+
+# APP_KEY: vorhandenen Wert aus .env lesen wenn kein neuer übergeben/erzeugt
+if (-not $AppKey) {
+    if ($Inhalt -match '(?m)^APP_KEY=([^\s#]+)') { $AppKey = $Matches[1].Trim() }
+}
+# JWT_SECRET: ebenso
+if (-not $JwtSecret) {
+    if ($Inhalt -match '(?m)^JWT_SECRET=([^\s#]+)') { $JwtSecret = $Matches[1].Trim() }
+}
 
 # Grundeinstellungen
 $Inhalt = $Inhalt -replace '(?m)^APP_KEY=.*',       "APP_KEY=$AppKey"

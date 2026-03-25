@@ -448,26 +448,23 @@ Nächste Schritte:
   2. Repository auf den Server klonen oder kopieren, z. B.:
        git clone https://github.com/SayaFly/HI.events-komplett-neu C:\deploy\HI.events-komplett-neu
 
-  3. APP_KEY und JWT_SECRET einmalig erzeugen (im backend-Verzeichnis des Quellcodes):
-       php artisan key:generate --show
-       php artisan jwt:secret  --show
-
-  4. Deployment-Skript als Administrator ausführen (beim ersten Deployment mit -Migrationen und -Seeder):
+  3. Deployment-Skript als Administrator ausführen (beim ersten Deployment mit -Migrationen und -Seeder):
        .\.github\scripts\deploy.ps1 ``
            -QuellPfad    "C:\deploy\HI.events-komplett-neu" ``
            -BackendPfad  "$BackendPath" ``
            -FrontendPfad "$FrontendPath" ``
-           -AppKey       "base64:..." ``
            -AppUrl       "https://$BackendDomain" ``
            -ViteApiUrl   "https://$BackendDomain/api" ``
            -DbHost       "127.0.0.1" ``
            -DbDatenbank  "event_veranstaltungen" ``
            -DbBenutzer   "ev_user" ``
            -DbPasswort   "sicheres_passwort" ``
-           -JwtSecret    "jwt_geheimnis" ``
            -Migrationen ``
            -Seeder
 
-  5. Standard-Admin-Passwort nach dem ersten Login sofort ändern (admin@dev-veranstaltungen.de / password).
+       APP_KEY und JWT_SECRET werden automatisch erzeugt und in der .env gespeichert.
+       Bei Folge-Deployments können -Migrationen und -Seeder weggelassen werden.
+
+  4. Standard-Admin-Passwort nach dem ersten Login sofort ändern (admin@dev-veranstaltungen.de / password).
 "@
 
