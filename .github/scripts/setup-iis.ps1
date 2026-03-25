@@ -437,19 +437,34 @@ Set-Acl $FrontendPath $acl
 Write-OK "ReadAndExecute rights granted on: $FrontendPath"
 
 # ─────────────────────────────────────────────────────────────────────────────
-Write-Host "`n✅  IIS setup complete." -ForegroundColor Green
+Write-Host "`n✅  IIS-Einrichtung abgeschlossen." -ForegroundColor Green
 Write-Host @"
 
-Next steps:
-  1. If not done yet, install and register the GitHub Actions self-hosted runner
-     on this server (label it 'self-hosted', 'Windows', 'IIS') so that the
-     deployment workflow can connect to it:
-       https://docs.github.com/en/actions/hosting-your-own-runners/adding-self-hosted-runners
-  2. Install an SSL certificate and add HTTPS bindings for:
-       - $BackendDomain  (port 443)
-       - $FrontendDomain (port 443)
-  3. Add required GitHub Secrets and run the 'CI/CD – Windows Server 2022 / IIS'
-     workflow with 'run_seed = true' for the very first deployment.
-  4. Change the default admin password after logging in for the first time.
+Nächste Schritte:
+  1. SSL-Zertifikat installieren und HTTPS-Bindings (Port 443) einrichten für:
+       - $BackendDomain
+       - $FrontendDomain
+
+  2. Repository auf den Server klonen oder kopieren, z. B.:
+       git clone https://github.com/SayaFly/HI.events-komplett-neu C:\deploy\HI.events-komplett-neu
+
+  3. Deployment-Skript als Administrator ausführen (beim ersten Deployment mit -Migrationen und -Seeder):
+       .\.github\scripts\deploy.ps1 ``
+           -QuellPfad    "C:\deploy\HI.events-komplett-neu" ``
+           -BackendPfad  "$BackendPath" ``
+           -FrontendPfad "$FrontendPath" ``
+           -AppUrl       "https://$BackendDomain" ``
+           -ViteApiUrl   "https://$BackendDomain/api" ``
+           -DbHost       "127.0.0.1" ``
+           -DbDatenbank  "event_veranstaltungen" ``
+           -DbBenutzer   "ev_user" ``
+           -DbPasswort   "sicheres_passwort" ``
+           -Migrationen ``
+           -Seeder
+
+       APP_KEY und JWT_SECRET werden automatisch erzeugt und in der .env gespeichert.
+       Bei Folge-Deployments können -Migrationen und -Seeder weggelassen werden.
+
+  4. Standard-Admin-Passwort nach dem ersten Login sofort ändern (admin@dev-veranstaltungen.de / password).
 "@
 
