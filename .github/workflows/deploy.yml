@@ -147,8 +147,8 @@ jobs:
     permissions:
       contents: read
     env:
-       BACKEND_ARTIFACT_PATH:  ${{ env.RUNNER_TEMP }}\backend
-      FRONTEND_ARTIFACT_PATH: ${{ env.RUNNER_TEMP }}\frontend-dist
+      BACKEND_ARTIFACT_PATH: ${{ runner.temp }}\backend
+      FRONTEND_ARTIFACT_PATH: ${{ runner.temp }}\frontend-dist
 
     steps:
       # ── 1  Download build artifacts ───────────────────────────────────────
@@ -299,7 +299,7 @@ jobs:
       - name: Smoke-test backend health endpoint
         shell: pwsh
         run: |
-          $url = "${{ secrets.APP_URL }}/api/v1/health"
+          $url = "${{ secrets.APP_URL }}/up"
           try {
               $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 15
               Write-Host "Health check OK – HTTP $($r.StatusCode)"
