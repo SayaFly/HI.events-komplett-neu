@@ -70,7 +70,7 @@ export default function AppLayout() {
             <Group gap="xs">
               <IconBuildingStore size={24} color="var(--mantine-color-violet-6)" />
               <Text fw={700} size="lg" c="violet">
-                dev-veranstaltungen.de
+              dev.veranstaltungen.de
               </Text>
             </Group>
           </Group>
@@ -121,7 +121,7 @@ export default function AppLayout() {
           })}
         </Stack>
         <Divider my="md" />
-        <Text size="xs" c="dimmed" ta="center">dev-veranstaltungen.de v1.0</Text>
+        <Text size="xs" c="dimmed" ta="center">dev.veranstaltungen.de v1.0</Text>
       </AppShell.Navbar>
 
       <AppShell.Main>
