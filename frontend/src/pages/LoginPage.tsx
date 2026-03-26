@@ -45,7 +45,7 @@ export default function LoginPage() {
   return (
     <Center mih="100vh" bg="gray.0">
       <Box w={420} p="xl">
-        <Title ta="center" mb={4} c="violet">🎫 dev.veranstaltungen.de</Title>
+        <Title ta="center" mb={4} c="violet">🎫 dev-veranstaltungen.de</Title>
         <Text ta="center" c="dimmed" mb="xl" size="sm">
           Dashboard-Anmeldung
         </Text>
@@ -81,7 +81,7 @@ export default function LoginPage() {
         </Paper>
 
         <Text ta="center" mt="md" size="xs" c="dimmed">
-          © {new Date().getFullYear()} dev.veranstaltungen.de
+          © {new Date().getFullYear()} dev-veranstaltungen.de
         </Text>
       </Box>
     </Center>
