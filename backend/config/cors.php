@@ -4,7 +4,7 @@ return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
     'allowed_methods' => ['*'],
     'allowed_origins' => [
-        env('FRONTEND_URL', 'https://dev-veranstaltungen.de'),
+        env('FRONTEND_URL', 'http://dev.veranstaltungen.de'),
     ],
     'allowed_origins_patterns' => [],
     'allowed_headers' => ['*'],

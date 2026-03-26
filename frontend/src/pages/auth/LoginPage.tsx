@@ -46,7 +46,7 @@ export default function LoginPage() {
           <Box p="md" style={{ background: 'var(--mantine-color-violet-1)', borderRadius: '50%' }}>
             <IconBuildingStore size={32} color="var(--mantine-color-violet-6)" />
           </Box>
-          <Title order={2} ta="center">dev-veranstaltungen.de</Title>
+          <Title order={2} ta="center">dev.veranstaltungen.de</Title>
           <Text c="dimmed" size="sm">Backend Dashboard – Anmeldung</Text>
         </Stack>
       </Center>
@@ -56,7 +56,7 @@ export default function LoginPage() {
           <Stack>
             <TextInput
               label="E-Mail"
-              placeholder="admin@dev-veranstaltungen.de"
+              placeholder="admin@dev.veranstaltungen.de"
               required
               {...form.getInputProps('email')}
             />
