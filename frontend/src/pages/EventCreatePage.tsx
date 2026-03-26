@@ -188,7 +188,7 @@ export default function EventCreatePage() {
                   {form.values.is_online && (
                     <TextInput
                       label="Online-URL"
-                      placeholder="https://..."
+                      placeholder="http://..."
                       {...form.getInputProps('online_url')}
                     />
                   )}
@@ -200,7 +200,7 @@ export default function EventCreatePage() {
                   />
                   <TextInput
                     label="Cover-Bild URL"
-                    placeholder="https://..."
+                    placeholder="http://..."
                     {...form.getInputProps('cover_image')}
                   />
                   <Switch

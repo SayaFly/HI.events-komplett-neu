@@ -29,8 +29,8 @@
             -QuellPfad    "C:\deploy\HI.events-komplett-neu" `
             -BackendPfad  "C:\inetpub\api.dev-veranstaltungen.de" `
             -FrontendPfad "C:\inetpub\dev-veranstaltungen.de" `
-            -AppUrl       "https://api.dev-veranstaltungen.de" `
-            -ViteApiUrl   "https://api.dev-veranstaltungen.de/api" `
+            -AppUrl       "http://api.dev-veranstaltungen.de" `
+            -ViteApiUrl   "http://api.dev-veranstaltungen.de/api" `
             -DbHost       "127.0.0.1" `
             -DbDatenbank  "event_veranstaltungen" `
             -DbBenutzer   "ev_user" `

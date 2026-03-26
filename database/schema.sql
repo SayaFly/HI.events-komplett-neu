@@ -511,7 +511,7 @@ INSERT IGNORE INTO `event_categories` (`name`, `slug`, `icon`, `color`, `sort_or
 
 INSERT IGNORE INTO `settings` (`key`, `value`, `group`) VALUES
 ('site_name',            'dev-veranstaltungen.de',         'general'),
-('site_url',             'https://dev-veranstaltungen.de', 'general'),
+('site_url',             'http://dev-veranstaltungen.de', 'general'),
 ('site_description',     'Ihre Plattform für Events und Veranstaltungen in Deutschland', 'general'),
 ('default_currency',     'EUR',                              'general'),
 ('default_timezone',     'Europe/Berlin',                    'general'),

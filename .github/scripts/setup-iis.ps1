@@ -441,20 +441,16 @@ Write-Host "`n✅  IIS-Einrichtung abgeschlossen." -ForegroundColor Green
 Write-Host @"
 
 Nächste Schritte:
-  1. SSL-Zertifikat installieren und HTTPS-Bindings (Port 443) einrichten für:
-       - $BackendDomain
-       - $FrontendDomain
-
-  2. Repository auf den Server klonen oder kopieren, z. B.:
+  1. Repository auf den Server klonen oder kopieren, z. B.:
        git clone https://github.com/SayaFly/HI.events-komplett-neu C:\deploy\HI.events-komplett-neu
 
-  3. Deployment-Skript als Administrator ausführen (beim ersten Deployment mit -Migrationen und -Seeder):
+  2. Deployment-Skript als Administrator ausführen (beim ersten Deployment mit -Migrationen und -Seeder):
        .\.github\scripts\deploy.ps1 ``
            -QuellPfad    "C:\deploy\HI.events-komplett-neu" ``
            -BackendPfad  "$BackendPath" ``
            -FrontendPfad "$FrontendPath" ``
-           -AppUrl       "https://$BackendDomain" ``
-           -ViteApiUrl   "https://$BackendDomain/api" ``
+           -AppUrl       "http://$BackendDomain" ``
+           -ViteApiUrl   "http://$BackendDomain/api" ``
            -DbHost       "127.0.0.1" ``
            -DbDatenbank  "event_veranstaltungen" ``
            -DbBenutzer   "ev_user" ``
